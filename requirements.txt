@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+pytz
+python-jose[cryptography]
+passlib[bcrypt]
+pyjwt
+python-multipart
+fastapi-pagination
