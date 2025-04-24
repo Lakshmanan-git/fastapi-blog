@@ -65,7 +65,7 @@ def create_blog(request: schemas.BlogCreate, db: Session = Depends(get_db)):
 
 #Get all Blog Detials from Blog Tag
 @app.get('/blog',  response_model=Page[schemas.ShowBlog], status_code= status.HTTP_200_OK, tags=["Blog"])
-async def get_blog(db: Session = Depends(get_db)):
+async def get_blog(db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
 	blogs = db.query(models.Blog).all()
 	return paginate(blogs)
 
@@ -77,7 +77,13 @@ def get_blog_by_id(id: int, db: Session = Depends(get_db), current_user: schemas
     blog = db.query(models.Blog).filter(models.Blog.blog_id == id).first()
     if not blog:
         raise HTTPException(status_code=404, detail="Blog not found")
-    return blog
+    blog_name = db.query(models.Blog.title).filter(models.Blog.blog_id == id).scalar()
+    review = db.query(models.Ratings).filter(models.Ratings.blog_name == blog_name).all()
+    return {
+    "blog": blog,
+    "reviews": review
+    }
+
 
 #Update a Blog
 @app.put('/blog/{id}', status_code=status.HTTP_200_OK, tags=["Blog"])
