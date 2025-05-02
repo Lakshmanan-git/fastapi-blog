@@ -43,37 +43,35 @@ def create_user(request: schemas.User, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return new_user
+    return {"msg": f"New User successfully created."}
 
-#Create a Blog.
-@app.post('/blog', status_code=status.HTTP_201_CREATED, response_model=schemas.BlogOut, tags=["Blog"])
-def create_blog(request: schemas.BlogCreate, db: Session = Depends(get_db)):
-    existing_blog = db.query(models.Blog).filter(models.Blog.title == request.title).first()
-    existing_author_name = db.query(models.Blog).filter(models.Blog.author_name == request.author_name).first()
-    if existing_blog and existing_author_name:
-        raise HTTPException(status_code=400, detail="Blog already exists")
-    new_blog = models.Blog(
-        title=request.title,
-        author_name=request.author_name,
-        body=request.body,
-        created_by=request.created_by
-    )
-    db.add(new_blog)
+#Update a User
+@app.put('/user/{email}', status_code=status.HTTP_200_OK, tags=["User"])
+def update_user(email:str, request: schemas.UserUpdate ,db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
+    new_email = db.query(models.User).filter(models.User.email == email)
+    if not new_email.first():
+          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"User with {email} not found")
+    if request.password:
+        hashed_password = pwd_cnt.hash(request.password)
+        update_data = request.model_dump()
+        update_data["password"] = hashed_password
+    else:
+        update_data = request.model_dump(exclude_unset=True)
+
+    new_email.update(update_data, synchronize_session=False)
     db.commit()
-    db.refresh(new_blog)
-    return new_blog
 
-#Get all Blog Detials from Blog Tag
+    return {"msg": f"User {email} updated successfully."}
+
+#Get all Blog Detials 
 @app.get('/blog',  response_model=Page[schemas.ShowBlog], status_code= status.HTTP_200_OK, tags=["Blog"])
-async def get_blog(db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
+async def get_blog(db: Session = Depends(get_db)):
 	blogs = db.query(models.Blog).all()
 	return paginate(blogs)
 
-
-add_pagination(app)
-# Get Single Blog Details from Blog Tag
+# Get Blog by ID
 @app.get('/blog/{id}', status_code=status.HTTP_200_OK, tags=["Blog"])
-def get_blog_by_id(id: int, db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
+def get_blog_by_id(id: int, db: Session = Depends(get_db)):
     blog = db.query(models.Blog).filter(models.Blog.blog_id == id).first()
     if not blog:
         raise HTTPException(status_code=404, detail="Blog not found")
@@ -84,6 +82,25 @@ def get_blog_by_id(id: int, db: Session = Depends(get_db), current_user: schemas
     "reviews": review
     }
 
+#Create a Blog.
+@app.post('/blog', status_code=status.HTTP_201_CREATED, response_model=schemas.BlogOut, tags=["Blog"])
+def create_blog(request: schemas.BlogCreate, db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
+    existing_blog = db.query(models.Blog).filter(models.Blog.title == request.title).first()
+    existing_author_name = db.query(models.Blog).filter(models.Blog.author_name == request.author_name).first()
+    if existing_blog and existing_author_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Blog already exists")
+    new_blog = models.Blog(
+        title=request.title,
+        author_name=request.author_name,
+        body=request.body,
+        created_by =  current_user.email
+    )
+    db.add(new_blog)
+    db.commit()
+    db.refresh(new_blog)
+    return new_blog
+
+add_pagination(app)
 
 #Update a Blog
 @app.put('/blog/{id}', status_code=status.HTTP_200_OK, tags=["Blog"])
@@ -96,11 +113,26 @@ def update(id: int, request: schemas.BlogUpdate ,db: Session = Depends(get_db), 
     return blog
 
 #Delte a blog
-@app.delete('/blog/{id}', status_code=status.HTTP_404_NOT_FOUND, tags=["Blog"])
-def delete_blog_by_id(id: int, db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
-    blog = db.query(models.Blog).filter(models.Blog.blog_id == id).delete(synchronize_session=False)
+@app.delete('/blog', status_code=status.HTTP_404_NOT_FOUND, tags=["Blog"])
+def delete_blog(request:schemas.BlogDelete, db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
+    if(request.email != current_user.email):
+         raise HTTPException(
+              status_code = status.HTTP_403_FORBIDDEN,
+              detail="The current user is not authorized to delete this blog."
+         )
+    blog_query = db.query(models.Blog).filter(
+        models.Blog.created_by == request.email,
+        models.Blog.title == request.title
+    )
+    blog = blog_query.first()
+    if not blog:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Blog is found that is created by the current user."
+        )
+    blog_query.delete(synchronize_session=False)
     db.commit()
-    return "done"
+    return {"detail": "Blog deleted successfully"}
 
 #Create a Rating
 @app.post('/rating', status_code=status.HTTP_201_CREATED, tags = ["Ratings"])
@@ -112,7 +144,7 @@ def create_rating(request: schemas.Rating, db: Session = Depends(get_db), curren
             detail=f"Blog with title '{request.blog_name}' does not exist"
         )
     new_rating = models.Ratings(
-        email=request.email,
+        email=current_user.email,
         rating=request.rating,
         blog_name=request.blog_name
     )
@@ -127,29 +159,50 @@ def get_ratings(db: Session = Depends(get_db), current_user: schemas.User= Depen
 	blogs = db.query(models.Ratings).all()
 	return blogs
 
-# Update a Rating
+# Update Ratings
 @app.put('/rating/update', status_code=status.HTTP_200_OK, tags=["Ratings"])
-def update(title: str, request: schemas.RatingUpdate, db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
-    rating = db.query(models.Ratings).filter(models.Ratings.blog_name == title).first()
-    
+def update_rating(
+    request: schemas.RatingUpdate,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(get_current_user)
+):
+    rating_query = db.query(models.Ratings).filter(
+        models.Ratings.blog_name == request.blog_name,
+        models.Ratings.email == current_user.email
+    )
+    rating = rating_query.first()
     if not rating:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Blog with title '{title}' not found")
-    
-    # Update fields manually
-    rating.rating = request.rating
-    rating.email = request.email
-    rating.blog_name = request.blog_name
-
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="You do not have a rating for this blog, or the blog does not exist."
+        )
+    rating_query.update(request.model_dump(exclude_unset=True), synchronize_session=False)
     db.commit()
-    db.refresh(rating)
-    return rating
+    return {"msg": "Rating updated successfully"}
+
 
 #Delte a Rating
-@app.delete('/rating/delete', status_code=status.HTTP_404_NOT_FOUND, tags=["Ratings"])
-def delete_blog_by_title(title: str, db: Session = Depends(get_db), current_user: schemas.User= Depends(get_current_user)):
-    blog = db.query(models.Blog).filter(models.Blog.blog_name == title).delete(synchronize_session=False)
+@app.delete('/rating/delete', status_code=status.HTTP_200_OK, tags=["Ratings"])
+def delete_blog(request: schemas.RatingDelete,
+                         db: Session = Depends(get_db),
+                         current_user: schemas.User= Depends(get_current_user)):
+    if request.email != current_user.email:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, 
+                             detail="The current user is not authorized to delete this rating."
+        )
+    rating_query = db.query(models.Ratings).filter(
+        models.Ratings.email == request.email,
+        models.Ratings.blog_name == request.blog_name
+    )
+    rating = rating_query.first()
+    if not rating:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No rating found for this blog by the current user."
+        )
+    rating_query.delete(synchronize_session=False)
     db.commit()
-    return "done"
+    return {"detail": "Rating deleted successfully"}
 
 
 def verify_password(plain_password, hashed_password):

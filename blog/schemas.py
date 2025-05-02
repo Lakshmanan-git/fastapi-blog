@@ -7,14 +7,13 @@ class BlogCreate(BaseModel):
 	title: str
 	author_name : str
 	body: str
-	created_by : str
+
 
 class BlogOut(BaseModel):
-    blog_id: int
     title: str
     author_name: str
     body: str
-    created_by: str
+    created_by: EmailStr
     created_date: date
     updated_datetime: Optional[datetime]
 
@@ -43,7 +42,11 @@ class ShowBlog(BaseModel):
     created_date: date
     
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class BlogDelete(BaseModel):
+     title: str
+     email: EmailStr
 
 #For User
 class User(BaseModel):
@@ -51,10 +54,17 @@ class User(BaseModel):
 	password: str
 	email: EmailStr
 
+class UserUpdate(BaseModel):
+    name: str
+    password:str
+
+    model_config = {
+        "from_attributes": True
+    }
+
 # For Ratings
 class Rating(BaseModel):
 	rating: int = Field(..., ge=1, le=5)
-	email: EmailStr
 	blog_name: str
 
 # For showing a rating in a response
@@ -68,12 +78,17 @@ class RatingOut(Rating):
 #Ratings Update
 class RatingUpdate(BaseModel):
     rating: int = Field(..., ge=1, le=5)
-    email: EmailStr
     blog_name: str
-
+    email: EmailStr
     model_config = {
         "from_attributes": True
     }
+
+#Raings Delete
+class RatingDelete(BaseModel):
+     blog_name: str
+     email: EmailStr
+     
 
 #Ratings Update
 class Login(BaseModel):
