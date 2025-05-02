@@ -33,6 +33,6 @@ class Ratings(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     rating = Column(Integer, nullable=False)
-    email = email = Column(String, ForeignKey('users.email'), nullable=False)
+    email = Column(String, ForeignKey('users.email'), nullable=False)
     blog_name = Column(String, nullable=False)
 
