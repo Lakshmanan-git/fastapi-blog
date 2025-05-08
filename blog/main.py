@@ -1,6 +1,5 @@
-from fastapi import FastAPI, Depends, status
+from fastapi import FastAPI, Depends, status, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import HTTPException
 from fastapi_pagination import Page, add_pagination, paginate
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
@@ -12,6 +11,11 @@ from .auth import create_access_token, get_current_user
 app = FastAPI()
 add_pagination(app)
 models.Base.metadata.create_all(bind = engine) 
+
+#Welcome Message
+@app.get('/',tags=["Welcome Message"])
+def hello():
+     return {"Message" : "Welcome to the blog app."}
 
 #Authentication
 @app.post('/login', status_code=status.HTTP_200_OK, response_model=schemas.Token, tags=["Authentication"])
